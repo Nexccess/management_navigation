@@ -63,7 +63,7 @@ ITやデジタルの使い方：${dx_status}
 // ── Gemini呼び出し ──
 async function callGemini(system, user) {
   const apiKey = process.env.GEMINI_API_KEY;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
   const body = {
     systemInstruction: { parts: [{ text: system }] },
