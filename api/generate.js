@@ -1,60 +1,161 @@
+// ── API切り替えはここだけ変える ──
+// 'gemini' → 'claude' に変えるとClaude APIに切り替わる
+const PROVIDER = 'gemini';
+
+// ── プロンプト（両プロバイダー共通） ──
+function buildPrompt(industry, company_size, sales_trend, hiring_status, dx_status, structure_level) {
+
+  const system = `あなたは「文章を書く装置」です。考えることも、判断することも、あなたの仕事ではありません。与えられた情報を、決められた形式で言葉にするだけです。
+
+## 読者のイメージ
+40代後半の、経営の世界とは縁遠い主婦が読む。
+難しい言葉は知らないが、今どきの言葉は普通に使える。
+「なんとなく変だな」という感覚は鋭い。
+でも経営用語や会計の話は頭に入ってこない。
+
+この人が読んで、「あ、そういうことか」と感じられる言葉で書く。
+この人が読んで、「で、どうすればいい？」と聞きたくなるように書く（答えは書かない）。
+
+## 絶対に使わない言葉
+以下の言葉・表現は一文字も使ってはいけない。
+「構造」「戦略」「施策」「リソース」「マネジメント」「ガバナンス」「KPI」「PDCA」「オペレーション」「キャパシティ」「スキーム」「フレームワーク」「最適化」「効率化」「強化」「改善」「対策」「解決」「提案」「推奨」「すべき」「必要がある」「重要」「課題」
+
+## 言い換えの例（参考）
+× 組織構造に課題がある → ○ 会社の中のつながり方が、少しずつずれてきている
+× 採用戦略の見直しが必要 → ○ 人が入ってこない状態が、もう少し続きそうに見える
+× DX推進が遅れている → ○ 仕事のやり方がまだ「人の頭の中」に入ったままになっている
+
+## 出力形式（この順番で、この構成だけ）
+
+【1. 現状の整理】
+（2文。すでに起きていることだけ書く。第三者が外から見ているような書き方で）
+
+【2. このままいくと見えやすい変化】
+（2文。意図や努力とは関係なく、自然に起きやすいことを書く。「〜かもしれない」「〜になりやすい」程度の言い方で。断定しない）
+
+【3. 整理しておくと、見え方が変わること】
+（1〜2文。「こうしろ」ではなく「こういう見方がある」という角度で書く）
+
+## 文体
+- 敬語なし
+- 1文に1つのことだけ
+- 全部で300文字以内
+- 読んだ後に「で、どうすればいい？」と思わせる「未完成感」を残す
+
+## 良い出力の例
+
+【1. 現状の整理】
+売上は横ばいのまま、人を採ることも止まっている。仕事は今いる人たちだけで回している状態が続いている。
+
+【2. このままいくと見えやすい変化】
+今いる人たちへの負担が、少しずつ気づかれないまま積み上がっていきやすい。そのうち、誰かが抜けたときに初めて「実は限界だった」と気づく、ということが起きやすくなる。
+
+【3. 整理しておくと、見え方が変わること】
+「今なぜ採用を止めているのか」と「止めた結果として何が起きているのか」を分けて見ると、見えていなかったものが出てくることがある。
+
+## 悪い出力の例（絶対にこうしない）
+
+【1. 現状の整理】
+売上が横ばいで推移しており、採用活動も停止している状況です。組織のキャパシティに課題が生じている可能性があります。
+
+【2. このままいくと見えやすい変化】
+このまま放置すると、組織の疲弊が進み、生産性の低下を招く恐れがあります。早急な対策が必要です。
+
+【3. 整理しておくと、見え方が変わること】
+採用戦略の見直しと業務効率化を検討することを推奨します。`;
+
+  const user = `以下の情報をもとに、一次整理コメントを書いてください。
+
+業種：${industry}
+従業員の数：${company_size}
+売上の流れ：${sales_trend}
+採用の状況：${hiring_status}
+ITやデジタルの使い方：${dx_status}
+この会社のタイプ：${structure_level}
+
+出力形式と文体のルールを必ず守ること。
+良い出力の例を参考に、悪い出力の例には絶対にならないこと。`;
+
+  return { system, user };
+}
+
+// ── Gemini呼び出し ──
+async function callGemini(system, user) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+  const body = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: 'user', parts: [{ text: user }] }],
+    generationConfig: {
+      temperature: 0.6,
+      maxOutputTokens: 700,
+    }
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || 'Gemini APIエラー');
+
+  return data.candidates?.[0]?.content?.parts?.[0]?.text;
+}
+
+// ── Claude呼び出し ──
+async function callClaude(system, user) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 700,
+      temperature: 0.6,
+      system,
+      messages: [{ role: 'user', content: user }]
+    })
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || 'Claude APIエラー');
+
+  return data.content?.[0]?.text;
+}
+
+// ── メインハンドラー ──
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const {
-    industry,
-    company_size,
-    sales_trend,
-    hiring_status,
-    dx_status,
-    structure_level
-  } = req.body;
+  const { industry, company_size, sales_trend, hiring_status, dx_status, structure_level } = req.body;
 
-  const required = [industry, company_size, sales_trend, hiring_status, dx_status, structure_level];
-  if (required.some(v => !v)) {
+  if ([industry, company_size, sales_trend, hiring_status, dx_status, structure_level].some(v => !v)) {
     return res.status(400).json({ error: '入力が不足しています' });
   }
 
-  // ── モック：入力内容に応じてパターン分岐 ──
-  // 本番切り替え時はこの関数ごとOpenAI/Claude API呼び出しに差し替える
+  try {
+    const { system, user } = buildPrompt(industry, company_size, sales_trend, hiring_status, dx_status, structure_level);
 
-  const salesDown  = ['横ばい','下がっている'].includes(sales_trend);
-  const hiringHard = ['苦戦している','停止・未実施'].includes(hiring_status);
-  const dxLow      = ['ツールはあるが属人化している','未着手'].includes(dx_status);
+    let result;
+    if (PROVIDER === 'gemini') {
+      result = await callGemini(system, user);
+    } else {
+      result = await callClaude(system, user);
+    }
 
-  let s1, s2, s3;
+    if (!result) throw new Error('生成結果が空です');
+    return res.status(200).json({ result });
 
-  if (salesDown && hiringHard) {
-    s1 = `${industry}の${company_size}の会社で、売上が${sales_trend}状態のまま、人を採ることも止まっている。今いる人たちだけで仕事を回している状態が続いている。`;
-    s2 = `今いる人への負担が、気づかれないまま少しずつ積み上がっていきやすい。誰かが抜けたとき初めて「実は限界だった」と気づく、ということが起きやすくなる。`;
-    s3 = `「今なぜ採用を止めているのか」と「止めた結果として何が起きているか」を分けて見ると、見えていなかったものが出てくることがある。`;
-  } else if (salesDown && dxLow) {
-    s1 = `${industry}の${company_size}の会社で、売上が${sales_trend}傾向にある。仕事のやり方がまだ「人の頭の中」に入ったままの部分が残っている。`;
-    s2 = `売上の流れが変わらないまま、仕事を知っている人への依存がじわじわ深くなっていきやすい。その人が動けなくなったとき、周りが何をすればいいかわからない、という場面が出やすくなる。`;
-    s3 = `「売上が動かない理由」と「仕事の流れが人に依存している理由」が、実は同じところにつながっているかどうかを一度見てみると、見え方が変わることがある。`;
-  } else if (hiringHard && dxLow) {
-    s1 = `${industry}の${company_size}の会社で、採用が${hiring_status}状態にある。仕事のやり方も、まだデジタルよりも人のやり方で動いている部分が多い。`;
-    s2 = `人が入ってきにくい状態と、仕事が人に紐づいている状態が重なると、今いる人の「抜けられなさ」が少しずつ強くなっていきやすい。それが長く続くと、辞めたくても辞めづらい空気が生まれやすくなる。`;
-    s3 = `「なぜ人が来ないのか」を外から見るとき、給料や条件だけでなく「この会社で働くイメージが湧くかどうか」という角度から見ると、違うものが見えてくることがある。`;
-  } else {
-    s1 = `${industry}の${company_size}の会社で、売上は${sales_trend}、採用は${hiring_status}という状態にある。全体として今の状態が「安定しているのか、止まっているのか」が外からは判断しにくい状況になっている。`;
-    s2 = `今の状態が続くと、変化のきっかけが見えにくいまま時間が過ぎていきやすい。「何かしなきゃ」という感覚だけが先に積み上がって、何から手をつければいいかが見えなくなることがある。`;
-    s3 = `「今うまくいっていること」と「たまたまうまくいっていること」を分けて見ると、次に何が起きやすいかが少し見えやすくなることがある。`;
+  } catch (err) {
+    console.error('API error:', err);
+    return res.status(500).json({ error: '処理中にエラーが発生しました' });
   }
-
-  const result = `【1. 現状の整理】
-${s1}
-
-【2. このままいくと見えやすい変化】
-${s2}
-
-【3. 整理しておくと、見え方が変わること】
-${s3}`;
-
-  // 本番らしさのため少し遅延（削除してOK）
-  await new Promise(r => setTimeout(r, 800));
-
-  return res.status(200).json({ result });
 }
